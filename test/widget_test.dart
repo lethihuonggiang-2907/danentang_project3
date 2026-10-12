@@ -32,7 +32,7 @@ void main() {
     // Tap on "Quét đơn"
     await tester.tap(find.text('Quét đơn'));
     await tester.pumpAndSettle();
-    expect(find.text('Máy quét hóa đơn & OCR'), findsOneWidget);
+    expect(find.text('Quét hóa đơn tự động'), findsOneWidget);
 
     // Tap on "Trợ lý AI"
     await tester.tap(find.text('Trợ lý AI'));
