@@ -37,10 +37,10 @@ void main() {
     // Tap on "Trợ lý AI"
     await tester.tap(find.text('Trợ lý AI'));
     await tester.pumpAndSettle();
-    expect(find.text('Trợ lý Gemini AI'), findsOneWidget);
+    expect(find.text('Trợ lý AI Gemini'), findsOneWidget);
 
     // Tap theme toggle button
-    final Finder themeToggle = find.byType(IconButton);
+    final Finder themeToggle = find.byIcon(Icons.dark_mode_rounded);
     expect(themeToggle, findsOneWidget);
     await tester.tap(themeToggle);
     await tester.pumpAndSettle();
