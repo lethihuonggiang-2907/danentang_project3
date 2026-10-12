@@ -27,7 +27,7 @@ void main() {
     // Tap on "Thống kê"
     await tester.tap(find.text('Thống kê'));
     await tester.pumpAndSettle();
-    expect(find.text('Biểu đồ chi tiêu'), findsOneWidget);
+    expect(find.text('Tròn (Pie)'), findsOneWidget);
 
     // Tap on "Quét đơn"
     await tester.tap(find.text('Quét đơn'));
