@@ -8,7 +8,7 @@ import '../models/spending_aggregation.dart';
 /// Service managing communication with the Google Gemini REST API via plain HTTP.
 class GeminiService {
   /// Designated Gemini Flash model for real-time financial assessment.
-  static const String geminiModel = 'gemini-1.5-flash';
+  static const String geminiModel = 'gemini-2.5-flash';
 
   final String _apiKey;
   final Connectivity _connectivity;
@@ -158,6 +158,8 @@ Yêu cầu: Trả lời súc tích, mang tính khích lệ, không lan man.
         return parseGeminiResponse(utf8.decode(response.bodyBytes));
       } else if (response.statusCode == 400) {
         throw GeminiException('Yêu cầu không hợp lệ (HTTP 400). Hãy kiểm tra lại dữ liệu.');
+      } else if (response.statusCode == 404) {
+        throw GeminiException('Model AI không còn khả dụng, hãy cập nhật cấu hình');
       } else if (response.statusCode == 401 || response.statusCode == 403) {
         throw GeminiException(
           'API Key không hợp lệ hoặc không có quyền truy cập (HTTP ${response.statusCode}).',

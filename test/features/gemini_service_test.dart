@@ -118,7 +118,7 @@ void main() {
 
     test('analyzeSpending handles 200 OK HTTP response with mock client', () async {
       final http.Client mockClient = MockClient((http.Request request) async {
-        expect(request.url.path, contains('gemini-1.5-flash:generateContent'));
+        expect(request.url.path, contains('gemini-2.5-flash:generateContent'));
         expect(request.headers['Content-Type'], contains('application/json'));
 
         const String responseBody = '''
@@ -150,6 +150,25 @@ void main() {
       final GeminiAnalysisResult result = await service.analyzeSpending(sampleAgg);
       expect(result.spendingLevel, 'Thấp');
       expect(result.goals.length, 1);
+    });
+
+    test('analyzeSpending maps HTTP 404 Model Not Found to specific Vietnamese exception', () async {
+      final http.Client mockClient = MockClient((http.Request request) async {
+        return http.Response('Model not found', 404);
+      });
+
+      final GeminiService service = GeminiService(
+        apiKey: 'valid_fake_key',
+        connectivity: _MockConnectivity(const <ConnectivityResult>[ConnectivityResult.wifi]),
+        client: mockClient,
+      );
+
+      expect(
+        () => service.analyzeSpending(sampleAgg),
+        throwsA(predicate((Object? e) =>
+            e is GeminiException &&
+            e.message == 'Model AI không còn khả dụng, hãy cập nhật cấu hình')),
+      );
     });
 
     test('analyzeSpending maps HTTP 429 Quota Exceeded to user-friendly exception', () async {
