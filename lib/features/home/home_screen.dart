@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/theme_provider.dart';
 import '../ai_assistant/screens/ai_assistant_screen.dart';
 import '../charts/screens/charts_screen.dart';
-import '../scanner/screens/scanner_screen.dart';
+import '../scanner/screens/camera_scanner_screen.dart';
 import '../transactions/screens/transaction_list_screen.dart';
 
 /// Main navigation shell housing the primary features of the app.
@@ -20,7 +20,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final List<Widget> _screens = const <Widget>[
     TransactionListScreen(),
     ChartsScreen(),
-    ScannerScreen(),
+    CameraScannerScreen(),
     AiAssistantScreen(),
   ];
 

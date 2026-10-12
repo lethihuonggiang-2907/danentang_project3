@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../data/models/transaction_item.dart';
-import '../../scanner/screens/scanner_screen.dart';
+import '../../scanner/screens/camera_scanner_screen.dart';
 import '../providers/transaction_provider.dart';
 import '../utils/category_helper.dart';
 import 'add_edit_transaction_screen.dart';
@@ -71,7 +71,8 @@ class _TransactionListScreenState extends ConsumerState<TransactionListScreen> {
                     Navigator.of(sheetCtx).pop();
                     Navigator.of(context).push(
                       MaterialPageRoute<bool>(
-                        builder: (BuildContext context) => const ScannerScreen(),
+                        builder: (BuildContext context) =>
+                            const CameraScannerScreen(),
                       ),
                     );
                   },
