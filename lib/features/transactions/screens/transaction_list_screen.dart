@@ -2,18 +2,118 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../data/models/transaction_item.dart';
+import '../../scanner/screens/scanner_screen.dart';
 import '../providers/transaction_provider.dart';
 import '../utils/category_helper.dart';
 import 'add_edit_transaction_screen.dart';
 
-/// Screen displaying the list of all expense transactions with swipe-to-delete and tap-to-edit.
-class TransactionListScreen extends ConsumerWidget {
+/// Screen displaying the list of all expense transactions with category filter chips,
+/// search, swipe-to-delete, and quick add actions.
+class TransactionListScreen extends ConsumerStatefulWidget {
   const TransactionListScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TransactionListScreen> createState() =>
+      _TransactionListScreenState();
+}
+
+class _TransactionListScreenState extends ConsumerState<TransactionListScreen> {
+  String? _selectedCategoryFilter;
+
+  void _showAddActionSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (BuildContext sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade400,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primaryContainer
+                          .withValues(alpha: 0.5),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.document_scanner_rounded,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  title: const Text(
+                    'Quét hóa đơn (OCR)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    'Chụp hoặc chọn ảnh hóa đơn để AI tự điền thông tin',
+                  ),
+                  onTap: () {
+                    Navigator.of(sheetCtx).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<bool>(
+                        builder: (BuildContext context) => const ScannerScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.edit_note_rounded,
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                  title: const Text(
+                    'Thêm chi tiêu thủ công',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text('Nhập số tiền và chi tiết tự do'),
+                  onTap: () {
+                    Navigator.of(sheetCtx).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute<bool>(
+                        builder: (BuildContext context) =>
+                            const AddEditTransactionScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final AsyncValue<List<TransactionItem>> transactionsAsync =
         ref.watch(transactionListProvider);
     final ThemeData theme = Theme.of(context);
@@ -27,14 +127,7 @@ class TransactionListScreen extends ConsumerWidget {
         heroTag: 'manual_add_fab',
         icon: const Icon(Icons.add_rounded),
         label: const Text('Thêm chi tiêu'),
-        onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<bool>(
-              builder: (BuildContext context) =>
-                  const AddEditTransactionScreen(),
-            ),
-          );
-        },
+        onPressed: () => _showAddActionSheet(context),
       ),
       body: transactionsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -49,16 +142,15 @@ class TransactionListScreen extends ConsumerWidget {
                 Text('Đã xảy ra lỗi: $err', textAlign: TextAlign.center),
                 const SizedBox(height: 16),
                 FilledButton.tonal(
-                  onPressed: () =>
-                      ref.invalidate(transactionListProvider),
+                  onPressed: () => ref.invalidate(transactionListProvider),
                   child: const Text('Thử lại'),
                 ),
               ],
             ),
           ),
         ),
-        data: (List<TransactionItem> items) {
-          if (items.isEmpty) {
+        data: (List<TransactionItem> allItems) {
+          if (allItems.isEmpty) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(32),
@@ -92,8 +184,17 @@ class TransactionListScreen extends ConsumerWidget {
             );
           }
 
-          // Calculate total sum for header banner
-          final int totalSpending = items.fold<int>(
+          // Apply category filter
+          final List<TransactionItem> displayedItems =
+              _selectedCategoryFilter == null
+                  ? allItems
+                  : allItems
+                      .where((TransactionItem item) =>
+                          item.category == _selectedCategoryFilter)
+                      .toList();
+
+          // Calculate total sum for banner
+          final int totalSpending = displayedItems.fold<int>(
             0,
             (int sum, TransactionItem item) => sum + item.amount,
           );
@@ -104,13 +205,13 @@ class TransactionListScreen extends ConsumerWidget {
               await ref.read(transactionListProvider.future);
             },
             child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-              itemCount: items.length + 1,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+              itemCount: displayedItems.length + 2, // 0: banner, 1: filters, 2..: items
               itemBuilder: (BuildContext context, int index) {
                 // Header summary banner
                 if (index == 0) {
                   return Container(
-                    margin: const EdgeInsets.only(bottom: 16),
+                    margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -135,7 +236,9 @@ class TransactionListScreen extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Text(
-                          'Tổng chi tiêu đã ghi nhận',
+                          _selectedCategoryFilter == null
+                              ? 'Tổng chi tiêu đã ghi nhận'
+                              : 'Chi tiêu cho: $_selectedCategoryFilter',
                           style: theme.textTheme.titleSmall?.copyWith(
                             color: Colors.white.withValues(alpha: 0.85),
                           ),
@@ -150,7 +253,7 @@ class TransactionListScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${items.length} giao dịch',
+                          '${displayedItems.length} giao dịch',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: Colors.white.withValues(alpha: 0.8),
                           ),
@@ -160,7 +263,71 @@ class TransactionListScreen extends ConsumerWidget {
                   );
                 }
 
-                final TransactionItem item = items[index - 1];
+                // Filter chips row
+                if (index == 1) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: <Widget>[
+                        FilterChip(
+                          label: const Text('Tất cả'),
+                          selected: _selectedCategoryFilter == null,
+                          onSelected: (bool selected) {
+                            setState(() {
+                              _selectedCategoryFilter = null;
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        ...AppConstants.defaultCategories.map(
+                          (String category) {
+                            final bool isSel =
+                                _selectedCategoryFilter == category;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: FilterChip(
+                                avatar: Icon(
+                                  CategoryHelper.getIcon(category),
+                                  size: 16,
+                                  color: isSel
+                                      ? Colors.white
+                                      : CategoryHelper.getColor(category),
+                                ),
+                                label: Text(category),
+                                selected: isSel,
+                                onSelected: (bool selected) {
+                                  setState(() {
+                                    _selectedCategoryFilter =
+                                        selected ? category : null;
+                                  });
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                // Empty filtered result
+                if (displayedItems.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(40),
+                    child: Center(
+                      child: Text(
+                        'Không có giao dịch nào thuộc danh mục $_selectedCategoryFilter',
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                final TransactionItem item = displayedItems[index - 2];
                 final Color categoryColor =
                     CategoryHelper.getColor(item.category);
                 final IconData categoryIcon =

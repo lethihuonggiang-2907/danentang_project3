@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../extraction/receipt_parser.dart';
 import '../services/ocr_service.dart';
@@ -73,16 +74,40 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       if (!mounted) return;
 
-      // If OCR returned zero text, alert user
+      // If OCR returned zero text, present options
       if (ocrResult.text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Không tìm thấy chữ trên ảnh. Bạn có thể chụp lại rõ hơn.',
+        final bool? proceed = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext dialogCtx) => AlertDialog(
+            title: const Row(
+              children: <Widget>[
+                Icon(Icons.warning_amber_rounded, color: Colors.amber),
+                SizedBox(width: 8),
+                Text('Không nhận diện được chữ'),
+              ],
             ),
+            content: const Text(
+              'Hình ảnh có thể bị mờ, lóa sáng hoặc không có chữ.\n\nBạn có muốn chụp lại hay tiếp tục nhập tay với ảnh này?',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(false),
+                child: const Text('Chụp lại'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(true),
+                child: const Text('Tiếp tục nhập tay'),
+              ),
+            ],
           ),
         );
+
+        if (proceed != true) {
+          return;
+        }
       }
+
+      if (!mounted) return;
 
       // 4. Navigate to confirm & edit screen
       await Navigator.of(context).push(
@@ -94,6 +119,27 @@ class _ScannerScreenState extends State<ScannerScreen> {
           ),
         ),
       );
+    } on PlatformException catch (pe) {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        showDialog<void>(
+          context: context,
+          builder: (BuildContext dCtx) => AlertDialog(
+            title: const Text('Quyền truy cập bị từ chối'),
+            content: Text(
+              'Ứng dụng cần quyền Camera hoặc Thư viện ảnh để quét hóa đơn. Vui lòng cấp quyền trong cài đặt thiết bị.\n(${pe.message ?? pe.code})',
+            ),
+            actions: <Widget>[
+              FilledButton(
+                onPressed: () => Navigator.of(dCtx).pop(),
+                child: const Text('Đã hiểu'),
+              ),
+            ],
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         setState(() {

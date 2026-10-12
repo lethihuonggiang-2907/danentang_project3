@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/thousands_separator_input_formatter.dart';
 import '../../../data/models/transaction_item.dart';
 import '../../extraction/receipt_parser.dart';
 import '../../transactions/providers/transaction_provider.dart';
@@ -42,8 +44,9 @@ class _ReceiptConfirmScreenState extends ConsumerState<ReceiptConfirmScreen> {
   void initState() {
     super.initState();
     final ParsedReceiptResult r = widget.parsedResult;
+    final NumberFormat format = NumberFormat('#,###', 'vi_VN');
     _amountController = TextEditingController(
-      text: r.amount != null ? r.amount.toString() : '',
+      text: r.amount != null ? format.format(r.amount!) : '',
     );
     _merchantController = TextEditingController(text: r.merchant ?? '');
     _noteController = TextEditingController();
@@ -234,6 +237,9 @@ class _ReceiptConfirmScreenState extends ConsumerState<ReceiptConfirmScreen> {
               TextFormField(
                 controller: _amountController,
                 keyboardType: TextInputType.number,
+                inputFormatters: <TextInputFormatter>[
+                  ThousandsSeparatorInputFormatter(),
+                ],
                 decoration: const InputDecoration(
                   labelText: 'Số tiền (VND) *',
                   hintText: 'Nhập số tiền hóa đơn',

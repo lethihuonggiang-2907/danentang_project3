@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/thousands_separator_input_formatter.dart';
 import '../../../data/models/transaction_item.dart';
 import '../providers/transaction_provider.dart';
 import '../utils/category_helper.dart';
@@ -38,8 +40,9 @@ class _AddEditTransactionScreenState
   void initState() {
     super.initState();
     final TransactionItem? item = widget.initialItem;
+    final NumberFormat format = NumberFormat('#,###', 'vi_VN');
     _amountController = TextEditingController(
-      text: item != null ? item.amount.toString() : '',
+      text: item != null ? format.format(item.amount) : '',
     );
     _merchantController = TextEditingController(text: item?.merchant ?? '');
     _noteController = TextEditingController(text: item?.note ?? '');
@@ -172,6 +175,9 @@ class _AddEditTransactionScreenState
               TextFormField(
                 controller: _amountController,
                 keyboardType: TextInputType.number,
+                inputFormatters: <TextInputFormatter>[
+                  ThousandsSeparatorInputFormatter(),
+                ],
                 decoration: const InputDecoration(
                   labelText: 'Số tiền (VND) *',
                   hintText: 'VD: 150000',

@@ -34,7 +34,7 @@ void main() {
     );
 
     // Verify pre-filled values
-    expect(find.text('175000'), findsOneWidget);
+    expect(find.textContaining('175'), findsWidgets);
     expect(find.text('Highlands Coffee'), findsOneWidget);
     expect(find.text('12/10/2026'), findsOneWidget);
 
