@@ -18,7 +18,8 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
 
     // Verify bottom navigation items and app bars
-    expect(find.text('Giao dịch'), findsNWidgets(2));
+    expect(find.text('Giao dịch'), findsOneWidget);
+    expect(find.text('Giao dịch chi tiêu'), findsOneWidget);
     expect(find.text('Thống kê'), findsOneWidget);
     expect(find.text('Quét đơn'), findsOneWidget);
     expect(find.text('Trợ lý AI'), findsOneWidget);
