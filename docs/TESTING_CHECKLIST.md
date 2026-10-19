@@ -49,4 +49,4 @@ Chụp thử ít nhất 10 hóa đơn/phiếu thanh toán thực tế khác nhau
 ## 5. Kiểm thử Trợ lý Gemini AI
 - [ ] **Chế độ Máy bay (Airplane Mode / Mất mạng):** Bật chế độ máy bay, nhấn "Phân tích chi tiêu với AI", kiểm tra thông báo ngoại tuyến thân thiện hiển thị cùng nút "Thử lại".
 - [ ] **Không truyền API Key:** Chạy ứng dụng không kèm `--dart-define=GEMINI_API_KEY=...`, kiểm tra màn hình báo rõ ràng "Chưa cấu hình Gemini API Key" mà không bị crash app.
-- [ ] **Có API Key hợp lệ:** Kết nối mạng, nhấn phân tích và kiểm tra câu trả lời từ Gemini (`gemini-2.5-flash`) gồm: Mức độ chi tiêu (Thấp/Vừa phải/Cao), nhận xét biến động và 2-3 mục tiêu tuần tới.
+- [ ] **Có API Key hợp lệ:** Kết nối mạng, nhấn phân tích và kiểm tra câu trả lời từ Gemini (`gemini-3.5-flash`) gồm: Mức độ chi tiêu (Thấp/Vừa phải/Cao), nhận xét biến động và 2-3 mục tiêu tuần tới.

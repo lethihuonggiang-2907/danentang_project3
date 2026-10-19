@@ -118,8 +118,9 @@ void main() {
 
     test('analyzeSpending handles 200 OK HTTP response with mock client', () async {
       final http.Client mockClient = MockClient((http.Request request) async {
-        expect(request.url.path, contains('gemini-2.5-flash:generateContent'));
+        expect(request.url.path, contains('gemini-3.5-flash:generateContent'));
         expect(request.headers['Content-Type'], contains('application/json'));
+        expect(request.headers['x-goog-api-key'], 'valid_fake_key');
 
         const String responseBody = '''
 {
@@ -167,7 +168,8 @@ void main() {
         () => service.analyzeSpending(sampleAgg),
         throwsA(predicate((Object? e) =>
             e is GeminiException &&
-            e.message == 'Model AI không còn khả dụng, hãy cập nhật cấu hình')),
+            e.message ==
+                'Model AI đã ngừng hoạt động hoặc đổi tên, hãy cập nhật tên model trong gemini_service.dart')),
       );
     });
 

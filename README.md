@@ -47,7 +47,7 @@
    - **Biểu đồ cột tuần (Weekly Bar Chart):** Chi tiêu 7 ngày trong tuần với điều hướng chuyển tuần linh hoạt.
    - Động cơ toán học [ChartGeometry](file:///d:/danentang/project3/lib/features/charts/geometry/chart_geometry.dart) tính toán góc quét đảm bảo tổng bằng $2\pi$ và xử lý hit-testing khi người dùng chạm vào biểu đồ.
 7. **Trợ lý AI phân tích tài chính (Google Gemini via REST HTTP):**
-   - Kết nối trực tiếp qua `http` tới model `gemini-2.5-flash`.
+   - Kết nối trực tiếp qua `http` tới model `gemini-3.5-flash`.
    - **Bảo mật tuyệt đối:** Chỉ gửi số liệu thống kê tổng hợp (tổng tiền, danh mục, tỷ lệ biến động theo tuần); không bao giờ gửi ảnh, tên quán hoặc ghi chú cá nhân.
    - Đánh giá mức độ chi tiêu (`Thấp` / `Vừa phải` / `Cao`), phân tích xu hướng và đề xuất 2-3 mục tiêu tài chính cho tuần tới.
    - Kiểm tra kết nối mạng trước khi gọi, xử lý đầy đủ các lỗi ngoại lệ (ngoại tuyến, timeout 15s, quota 429, API key không hợp lệ).
