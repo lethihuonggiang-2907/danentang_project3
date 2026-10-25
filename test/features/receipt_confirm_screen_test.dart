@@ -49,4 +49,52 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Tổng cộng: 175.000đ'), findsOneWidget);
   });
+
+  testWidgets('ReceiptConfirmScreen shows missing date hint when date is null',
+      (WidgetTester tester) async {
+    const ParsedReceiptResult parsedResult = ParsedReceiptResult(
+      amount: 50000,
+      date: null,
+      merchant: 'Circle K',
+      rawText: 'Circle K\n50.000đ',
+    );
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(
+          home: ReceiptConfirmScreen(
+            parsedResult: parsedResult,
+            thumbnailPath: null,
+            ocrDurationMs: 65,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Không tìm thấy ngày, đang dùng hôm nay'), findsOneWidget);
+  });
+
+  testWidgets('ReceiptConfirmScreen shows warning when date is in the future',
+      (WidgetTester tester) async {
+    final ParsedReceiptResult parsedResult = ParsedReceiptResult(
+      amount: 70000000,
+      date: DateTime(2030, 7, 20),
+      merchant: 'AN NAM',
+      rawText: 'AN NAM\n20/07/2030',
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: ReceiptConfirmScreen(
+            parsedResult: parsedResult,
+            thumbnailPath: null,
+            ocrDurationMs: 90,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Lưu ý: Ngày trên hóa đơn là ngày trong tương lai'), findsOneWidget);
+  });
 }

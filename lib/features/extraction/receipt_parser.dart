@@ -128,50 +128,143 @@ class ReceiptParser {
   // AMOUNT EXTRACTION HEURISTICS
   // ==========================================
 
+  /// Checks whether a line contains email, website, phone number or tax code indicators.
+  static bool _isContactOrMetadataLine(String line) {
+    final String norm = _normalize(line);
+    if (norm.contains('EMAIL') ||
+        norm.contains('@') ||
+        norm.contains('WEBSITE') ||
+        norm.contains('WWW.') ||
+        norm.contains('HTTP://') ||
+        norm.contains('HTTPS://') ||
+        norm.contains('MST') ||
+        norm.contains('MA SO THUE') ||
+        norm.contains('SDT') ||
+        norm.contains('SĐT') ||
+        norm.contains('DIEN THOAI') ||
+        norm.contains('TEL') ||
+        norm.contains('HOTLINE') ||
+        norm.contains('PHONE')) {
+      return true;
+    }
+
+    final String trimmed = line.trim();
+    if (trimmed.startsWith('+84') || trimmed.startsWith('+')) {
+      return true;
+    }
+
+    final String digitsOnly = line.replaceAll(RegExp(r'[^0-9]'), '');
+    if ((digitsOnly.startsWith('0') && (digitsOnly.length == 10 || digitsOnly.length == 11)) ||
+        (digitsOnly.startsWith('84') && (digitsOnly.length == 11 || digitsOnly.length == 12))) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Extracts Vietnamese unit-word amounts (e.g. "70 triệu VNĐ", "2 triệu", "1,5 triệu", "500 nghìn", "500k", "2tr").
+  static List<int> _extractUnitWordAmountsFromLine(String line) {
+    if (_isContactOrMetadataLine(line)) {
+      return <int>[];
+    }
+
+    final String norm = _normalize(line);
+    final RegExp unitRegex = RegExp(
+      r'(?:^|[^\w])(\d+(?:[.,]\d+)?)\s*(TRIEU|TR|NGHIN|NGAN|K)\b',
+      caseSensitive: false,
+    );
+
+    final List<int> results = <int>[];
+    for (final RegExpMatch m in unitRegex.allMatches(norm)) {
+      final String rawNum = m.group(1)!.replaceAll(',', '.');
+      final double? numVal = double.tryParse(rawNum);
+      if (numVal == null || numVal <= 0) continue;
+
+      final String unit = m.group(2)!.toUpperCase();
+      final double multiplier;
+      if (unit == 'TRIEU' || unit == 'TR') {
+        multiplier = 1000000;
+      } else if (unit == 'NGHIN' || unit == 'NGAN' || unit == 'K') {
+        multiplier = 1000;
+      } else {
+        continue;
+      }
+
+      final int finalAmount = (numVal * multiplier).round();
+      if (finalAmount >= 1000 && finalAmount <= 9999999999) {
+        results.add(finalAmount);
+      }
+    }
+    return results;
+  }
+
+  static int? _extractUnitWordAmountFromLine(String line) {
+    final List<int> amounts = _extractUnitWordAmountsFromLine(line);
+    if (amounts.isEmpty) return null;
+    return amounts.last;
+  }
+
   static int? _extractAmount(List<String> lines) {
     // 1. Try keyword matching on lines first
     for (int i = 0; i < lines.length; i++) {
       final String rawLine = lines[i];
       final String normLine = _normalize(rawLine);
 
-      // Check if line contains ignore keywords
-      if (_hasAnyKeyword(normLine, _ignoreAmountKeywords)) {
+      // Check if line contains ignore keywords or contact metadata
+      if (_hasAnyKeyword(normLine, _ignoreAmountKeywords) ||
+          _isContactOrMetadataLine(rawLine)) {
         continue;
       }
 
       // Check if line contains a preferred amount keyword
       if (_hasAnyKeyword(normLine, _amountKeywords)) {
-        // Try to extract amount from the same line
+        // 1a. Try to extract standard numeric amount from the same line
         final int? sameLineAmount = _extractAmountFromLine(rawLine);
         if (sameLineAmount != null) {
           return sameLineAmount;
         }
 
-        // If not found on same line, inspect the immediate next line (e.g. MB Bank / MoMo)
+        // 1b. Try unit-word amounts on the same line (e.g. "TỔNG CỘNG 70 triệu VNĐ")
+        final int? sameLineUnitAmount = _extractUnitWordAmountFromLine(rawLine);
+        if (sameLineUnitAmount != null) {
+          return sameLineUnitAmount;
+        }
+
+        // 1c. If not found on same line, inspect the immediate next line (e.g. MB Bank / MoMo)
         if (i + 1 < lines.length) {
           final String nextLine = lines[i + 1];
           final String normNextLine = _normalize(nextLine);
-          if (!_hasAnyKeyword(normNextLine, _ignoreAmountKeywords)) {
+          if (!_hasAnyKeyword(normNextLine, _ignoreAmountKeywords) &&
+              !_isContactOrMetadataLine(nextLine)) {
             final int? nextLineAmount = _extractAmountFromLine(nextLine);
             if (nextLineAmount != null) {
               return nextLineAmount;
+            }
+
+            final int? nextLineUnitAmount = _extractUnitWordAmountFromLine(nextLine);
+            if (nextLineUnitAmount != null) {
+              return nextLineUnitAmount;
             }
           }
         }
       }
     }
 
-    // 2. Fallback: Find the largest plausible amount in lines not marked as ignored
+    // 2. Fallback: Find the largest plausible amount in lines not marked as ignored or contact
     int? maxAmount;
     for (final String line in lines) {
       final String normLine = _normalize(line);
-      if (_hasAnyKeyword(normLine, _ignoreAmountKeywords)) {
+      if (_hasAnyKeyword(normLine, _ignoreAmountKeywords) ||
+          _isContactOrMetadataLine(line)) {
         continue;
       }
-      final List<int> candidates = _extractAllAmountsFromLine(line);
+      final List<int> candidates = <int>[
+        ..._extractAllAmountsFromLine(line),
+        ..._extractUnitWordAmountsFromLine(line),
+      ];
       for (final int cand in candidates) {
-        // Plausible VND amount: at least 1,000 VND and under 10 billion
-        if (cand >= 1000 && cand <= 10000000000) {
+        // Plausible VND amount: at least 1,000 VND and under 10 billion (max 10 digits)
+        if (cand >= 1000 && cand <= 9999999999) {
           if (maxAmount == null || cand > maxAmount) {
             maxAmount = cand;
           }
@@ -194,11 +287,27 @@ class ReceiptParser {
 
   /// Finds and parses all amount patterns in a line, with OCR noise correction.
   static List<int> _extractAllAmountsFromLine(String line) {
+    if (_isContactOrMetadataLine(line)) {
+      return <int>[];
+    }
+
     final List<int> results = <int>[];
 
-    // Clean up OCR character confusion for numbers:
-    // e.g. "15O.OOO" -> "150.000", "l50.000" -> "150.000"
     String sanitized = line;
+
+    // Mask out phone numbers (+84... or 0 followed by 9 to 10 digits or hotlines 1800/1900)
+    sanitized = sanitized.replaceAll(
+      RegExp(r'\+?84[\s.-]?[1-9]\d{1,3}[\s.-]?\d{3}[\s.-]?\d{3,4}'),
+      ' ',
+    );
+    sanitized = sanitized.replaceAll(
+      RegExp(r'\b0[1-9]\d{1,2}[\s.-]?\d{3}[\s.-]?\d{3,4}\b'),
+      ' ',
+    );
+    sanitized = sanitized.replaceAll(
+      RegExp(r'\b(?:1800|1900)[\s.-]?\d{4}\b'),
+      ' ',
+    );
 
     // Iteratively replace letter O/o when adjacent to digits or decimal points
     for (int iter = 0; iter < 4; iter++) {
@@ -224,16 +333,23 @@ class ReceiptParser {
       );
     }
 
-    // Collapse spaces between consecutive digits: "1 50" -> "150"
+    // Collapse spaces between digits ONLY when forming standard thousand groups
+    // (1 to 3 digits followed by 3-digit groups, e.g. "150 000" -> "150000", "1 250 000" -> "1250000")
     sanitized = sanitized.replaceAllMapped(
-      RegExp(r'(\d)\s+(\d)'),
-      (Match m) => '${m[1]}${m[2]}',
+      RegExp(r'\b(\d{1,3})\s+(\d{3})(?:\s+(\d{3}))?(?!\s*\d)'),
+      (Match m) => m.group(0)!.replaceAll(RegExp(r'\s+'), ''),
     );
 
     // Collapse spaces around punctuation: "150. 000" or "150 .000" -> "150.000"
     sanitized = sanitized.replaceAllMapped(
       RegExp(r'(\d)\s*([.,])\s*(\d)'),
       (Match m) => '${m[1]}${m[2]}${m[3]}',
+    );
+
+    // Stray spaces inside digits before decimal: "1 50.000" -> "150.000"
+    sanitized = sanitized.replaceAllMapped(
+      RegExp(r'\b(\d)\s+(\d{2})\s*([.,])\s*(\d{3})\b'),
+      (Match m) => '${m[1]}${m[2]}${m[3]}${m[4]}',
     );
 
     // Regex for standard currency formats:
@@ -250,7 +366,8 @@ class ReceiptParser {
       final String digitsOnly = rawMatch.replaceAll(RegExp(r'[^0-9]'), '');
       if (digitsOnly.isNotEmpty) {
         final int? parsed = int.tryParse(digitsOnly);
-        if (parsed != null && parsed > 0) {
+        // Plausibility check: reject amounts over 10 digits
+        if (parsed != null && parsed >= 1000 && parsed <= 9999999999) {
           results.add(parsed);
         }
       }
@@ -265,12 +382,20 @@ class ReceiptParser {
 
   static DateTime? _extractDate(List<String> lines) {
     // Regex for date: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, DD/MM/YY
+    // Support optional spaces around delimiters (common in OCR e.g. "20 / 07 / 2030")
     // Followed optionally by time: HH:mm or HH:mm:ss
     final RegExp dateRegex = RegExp(
-      r'(\b\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?',
+      r'(\b\d{1,2})\s*[\/\-\.]\s*(\d{1,2})\s*[\/\-\.]\s*(\d{2,4})(?:\s+(\d{1,2})\s*:\s*(\d{1,2})(?:\s*:\s*(\d{1,2}))?)?',
+    );
+
+    // Vietnamese textual date regex: "Ngày 20 tháng 07 năm 2030"
+    final RegExp vnTextDateRegex = RegExp(
+      r'(?:NGAY|NGÀY)?\s*(\b\d{1,2})\s*(?:THANG|THÁNG)\s*(\d{1,2})\s*(?:NAM|NĂM)\s*(\d{2,4})',
+      caseSensitive: false,
     );
 
     for (final String line in lines) {
+      // 1. Check standard slash/dash/dot formatted date
       final Iterable<RegExpMatch> matches = dateRegex.allMatches(line);
       for (final RegExpMatch m in matches) {
         final int day = int.parse(m.group(1)!);
@@ -295,6 +420,30 @@ class ReceiptParser {
         // Calendar verification to prevent roll-over (e.g. 31/02 -> March in Dart)
         try {
           final DateTime testDate = DateTime(year, month, day, hour, minute, second);
+          if (testDate.year == year && testDate.month == month && testDate.day == day) {
+            return testDate;
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+
+      // 2. Check Vietnamese textual date (e.g. "Ngày 20 tháng 07 năm 2030")
+      final Iterable<RegExpMatch> textMatches = vnTextDateRegex.allMatches(line);
+      for (final RegExpMatch m in textMatches) {
+        final int day = int.parse(m.group(1)!);
+        final int month = int.parse(m.group(2)!);
+        int year = int.parse(m.group(3)!);
+        if (year < 100) {
+          year += 2000;
+        }
+
+        if (month < 1 || month > 12 || day < 1 || day > 31) {
+          continue;
+        }
+
+        try {
+          final DateTime testDate = DateTime(year, month, day);
           if (testDate.year == year && testDate.month == month && testDate.day == day) {
             return testDate;
           }

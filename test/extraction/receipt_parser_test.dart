@@ -290,5 +290,73 @@ Hẹn gặp lại!
       expect(res.date, isNull);
       expect(res.merchant, isNull);
     });
+
+    // --- 34 to 38: Real invoice OCR cases, unit words, phone number rejection ---
+    test('Case 34: Real sample invoice with 70 triệu VNĐ, future date 20/07/2030, and phone number', () {
+      const String text = '''
+AN NAM
+Ngày: 20 / 07 / 2030
+Mô tả mục hoặc dịch vụ ở đây 5 2 triệu VNĐ 10 triệu VNĐ
+TỔNG CỘNG 70 triệu VNĐ
+Email: info@annam.com
+Website: www.annam.com.vn
++84 912 345 678
+''';
+      final ParsedReceiptResult res = ReceiptParser.parse(text);
+      expect(res.merchant, 'AN NAM');
+      expect(res.amount, 70000000);
+      expect(res.date, DateTime(2030, 7, 20));
+    });
+
+    test('Case 35: Vietnamese unit words (triệu, tr, nghìn, ngàn, k)', () {
+      expect(ReceiptParser.parse('TỔNG CỘNG: 70 triệu VNĐ').amount, 70000000);
+      expect(ReceiptParser.parse('Tổng tiền: 2 triệu').amount, 2000000);
+      expect(ReceiptParser.parse('Thành tiền: 1,5 triệu').amount, 1500000);
+      expect(ReceiptParser.parse('Thành tiền: 1.5 triệu').amount, 1500000);
+      expect(ReceiptParser.parse('Tổng cộng: 500 nghìn').amount, 500000);
+      expect(ReceiptParser.parse('Tổng cộng: 500 ngàn').amount, 500000);
+      expect(ReceiptParser.parse('Thanh toán: 500k').amount, 500000);
+      expect(ReceiptParser.parse('Thanh toán: 500K').amount, 500000);
+      expect(ReceiptParser.parse('Tổng: 2tr').amount, 2000000);
+      expect(ReceiptParser.parse('Tổng: 2TR').amount, 2000000);
+    });
+
+    test('Case 36: Phone numbers and hotlines must never be parsed as amounts', () {
+      const String text = '''
+Cửa hàng tiện lợi
+SĐT: 0912345678
+Điện thoại: 0912 345 678
+Hotline 1900 1234
++84 912 345 678
+''';
+      final ParsedReceiptResult res = ReceiptParser.parse(text);
+      expect(res.amount, isNull);
+    });
+
+    test('Case 37: Email, website, and tax code lines are ignored for amount extraction', () {
+      const String text = '''
+Công ty ABC
+Email: contact@abc12345678.com
+Website: https://shop123456789.vn
+Mã số thuế: 0109876543
+''';
+      final ParsedReceiptResult res = ReceiptParser.parse(text);
+      expect(res.amount, isNull);
+    });
+
+    test('Case 38: Parse dates with OCR spaces around slashes and Vietnamese textual dates', () {
+      expect(
+        ReceiptParser.parse('Ngày: 20 / 07 / 2030').date,
+        DateTime(2030, 7, 20),
+      );
+      expect(
+        ReceiptParser.parse('Ngày: 20/ 07/ 2030').date,
+        DateTime(2030, 7, 20),
+      );
+      expect(
+        ReceiptParser.parse('Ngày 20 tháng 07 năm 2030').date,
+        DateTime(2030, 7, 20),
+      );
+    });
   });
 }

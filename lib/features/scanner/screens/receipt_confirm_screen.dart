@@ -277,6 +277,41 @@ class _ReceiptConfirmScreenState extends ConsumerState<ReceiptConfirmScreen> {
                   ),
                 ),
               ),
+              if (widget.parsedResult.date == null) ...<Widget>[
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(Icons.info_outline, size: 14, color: Colors.blue.shade700),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Không tìm thấy ngày, đang dùng hôm nay',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else if (widget.parsedResult.date!.isAfter(DateTime.now())) ...<Widget>[
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(Icons.warning_amber_rounded, size: 14, color: Colors.orange.shade800),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Lưu ý: Ngày trên hóa đơn là ngày trong tương lai',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // Category dropdown
