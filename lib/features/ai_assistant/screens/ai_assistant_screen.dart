@@ -207,7 +207,7 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
                       color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
@@ -225,6 +225,35 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
               ),
             ),
             const SizedBox(height: 14),
+
+            // Note when data is limited
+            if (agg.transactionCount < 3 || agg.previousWeekTotal == 0) ...<Widget>[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.shade300),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.info_outline_rounded, size: 18, color: Colors.amber.shade900),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Dữ liệu còn ít nên nhận xét chỉ mang tính tham khảo',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             // Privacy Disclosure
             Container(
@@ -336,7 +365,7 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
                       ),
                       const Divider(height: 28),
 
-                      // AI Remarks
+                      // AI Remarks Header
                       Text(
                         'Nhận xét từ Gemini (${GeminiService.geminiModel}):',
                         style: theme.textTheme.titleSmall?.copyWith(
@@ -344,41 +373,10 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
                           color: theme.colorScheme.primary,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _result!.analysisSummary,
-                        style: const TextStyle(fontSize: 14, height: 1.5),
-                      ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
 
-                      // Financial Goals
-                      if (_result!.goals.isNotEmpty) ...<Widget>[
-                        Text(
-                          'Mục tiêu gợi ý cho tuần tới:',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.secondary,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        ..._result!.goals.map(
-                          (String goal) => Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                const Text('🎯 ', style: TextStyle(fontSize: 14)),
-                                Expanded(
-                                  child: Text(
-                                    goal,
-                                    style: const TextStyle(fontSize: 13, height: 1.4),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                      // Formatted full answer with bold and bullet support
+                      _buildFormattedText(_result!.analysisSummary, context),
                     ],
                   ),
                 ),
@@ -438,4 +436,99 @@ class _AiAssistantScreenState extends ConsumerState<AiAssistantScreen> {
       ),
     );
   }
+
+  Widget _buildFormattedText(String text, BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final List<String> lines = text.split('\n');
+    final List<Widget> widgets = <Widget>[];
+
+    for (final String line in lines) {
+      final String trimmed = line.trim();
+      if (trimmed.isEmpty) {
+        widgets.add(const SizedBox(height: 6));
+        continue;
+      }
+
+      final bool isBullet = trimmed.startsWith('- ') ||
+          trimmed.startsWith('* ') ||
+          trimmed.startsWith('• ');
+      final String content = isBullet ? trimmed.substring(2).trim() : trimmed;
+
+      final Widget textWidget = Text.rich(
+        _parseBoldSpans(content, theme.textTheme.bodyMedium),
+      );
+
+      if (isBullet) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '• ',
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.4,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                Expanded(child: textWidget),
+              ],
+            ),
+          ),
+        );
+      } else {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: textWidget,
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
+  }
+
+  InlineSpan _parseBoldSpans(String text, TextStyle? baseStyle) {
+    final List<InlineSpan> spans = <InlineSpan>[];
+    final RegExp boldRegex = RegExp(r'\*\*(.*?)\*\*');
+    int lastMatchEnd = 0;
+
+    for (final Match match in boldRegex.allMatches(text)) {
+      if (match.start > lastMatchEnd) {
+        spans.add(
+          TextSpan(
+            text: text.substring(lastMatchEnd, match.start),
+            style: baseStyle,
+          ),
+        );
+      }
+      final String boldText = match.group(1) ?? '';
+      spans.add(
+        TextSpan(
+          text: boldText,
+          style: baseStyle?.copyWith(fontWeight: FontWeight.bold),
+        ),
+      );
+      lastMatchEnd = match.end;
+    }
+
+    if (lastMatchEnd < text.length) {
+      spans.add(
+        TextSpan(
+          text: text.substring(lastMatchEnd),
+          style: baseStyle,
+        ),
+      );
+    }
+
+    return TextSpan(children: spans);
+  }
 }
+

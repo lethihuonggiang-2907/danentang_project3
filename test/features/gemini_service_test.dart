@@ -44,6 +44,19 @@ void main() {
       expect(prompt, isNot(contains('Highlands')));
     });
 
+    test('buildSpendingPrompt includes limited data note when transactions < 3 or prev total is 0', () {
+      final SpendingAggregation limitedAgg = SpendingAggregation(
+        totalSpending: 50000,
+        transactionCount: 2,
+        categoryTotals: <String, int>{'Ăn uống': 50000},
+        dailyTotals: <String, int>{'T2': 50000},
+        previousWeekTotal: 0,
+        weekOverWeekChangePercent: 0,
+      );
+      final String prompt = GeminiService.buildSpendingPrompt(limitedAgg);
+      expect(prompt, contains('LƯU Ý: Dữ liệu tuần này còn ít'));
+    });
+
     test('parseGeminiResponse successfully extracts Spending Level, summary and goals', () {
       const String fakeApiResponse = '''
 {
@@ -52,7 +65,7 @@ void main() {
       "content": {
         "parts": [
           {
-            "text": "1. MỨC ĐỘ CHI TIÊU: Vừa phải\\n2. NHẬN XÉT: Chi tiêu tuần này tăng 30% so với tuần trước, chủ yếu tập trung vào danh mục Thực phẩm (350.000đ).\\n3. MỤC TIÊU TUẦN TỚI:\\n- Nấu ăn tại nhà để giảm chi tiêu thực phẩm.\\n- Hạn chế phát sinh các khoản di chuyển không cần thiết."
+            "text": "1. Nhận xét biến động chi tiêu:\\nChi tiêu tuần này tăng 30% so với tuần trước, chủ yếu tập trung vào danh mục Thực phẩm (350.000đ).\\n\\n2. Mức độ chi tiêu: Vừa phải\\n\\n3. Mục tiêu tuần tới:\\n- Nấu ăn tại nhà để giảm chi tiêu thực phẩm.\\n- Hạn chế phát sinh các khoản di chuyển không cần thiết."
           }
         ]
       }
@@ -116,7 +129,7 @@ void main() {
       );
     });
 
-    test('analyzeSpending handles 200 OK HTTP response with mock client', () async {
+    test('analyzeSpending handles normal full response with mocked http client', () async {
       final http.Client mockClient = MockClient((http.Request request) async {
         expect(request.url.path, contains('gemini-3.5-flash:generateContent'));
         expect(request.headers['Content-Type'], contains('application/json'));
@@ -126,10 +139,11 @@ void main() {
 {
   "candidates": [
     {
+      "finishReason": "STOP",
       "content": {
         "parts": [
           {
-            "text": "1. MỨC ĐỘ CHI TIÊU: Thấp\\n2. NHẬN XÉT: Chi tiêu được kiểm soát rất tốt.\\n3. MỤC TIÊU TUẦN TỚI:\\n- Tiếp tục duy trì thói quen tiết kiệm."
+            "text": "1. Nhận xét biến động chi tiêu:\\nTổng chi tiêu tuần này là 650.000đ, tăng 30% so với tuần trước.\\n\\n2. Mức độ chi tiêu: Vừa phải\\n\\n3. Mục tiêu tuần tới:\\n- Nấu ăn tại nhà\\n- Giảm chi tiêu trà sữa"
           }
         ]
       }
@@ -149,8 +163,124 @@ void main() {
       );
 
       final GeminiAnalysisResult result = await service.analyzeSpending(sampleAgg);
-      expect(result.spendingLevel, 'Thấp');
-      expect(result.goals.length, 1);
+      expect(result.spendingLevel, 'Vừa phải');
+      expect(result.analysisSummary, contains('Tổng chi tiêu tuần này là 650.000đ'));
+      expect(result.goals, contains('Nấu ăn tại nhà'));
+      expect(result.goals, contains('Giảm chi tiêu trà sữa'));
+    });
+
+    test('analyzeSpending handles response with several parts and skips thought tokens', () async {
+      final http.Client mockClient = MockClient((http.Request request) async {
+        const String responseBody = '''
+{
+  "candidates": [
+    {
+      "finishReason": "STOP",
+      "content": {
+        "parts": [
+          {
+            "thought": true,
+            "text": "User spent 650k, 30% increase. Level is Cao. Thinking tokens here."
+          },
+          {
+            "text": "1. Nhận xét biến động chi tiêu:\\nChi tiêu tăng đáng kể 30%.\\n\\n2. Mức độ chi tiêu: "
+          },
+          {
+            "text": "Cao\\n\\n3. Mục tiêu tuần tới:\\n- Cắt giảm chi tiêu không thiết yếu"
+          }
+        ]
+      }
+    }
+  ]
+}
+''';
+        return http.Response(responseBody, 200, headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        });
+      });
+
+      final GeminiService service = GeminiService(
+        apiKey: 'valid_fake_key',
+        connectivity: _MockConnectivity(const <ConnectivityResult>[ConnectivityResult.wifi]),
+        client: mockClient,
+      );
+
+      final GeminiAnalysisResult result = await service.analyzeSpending(sampleAgg);
+      expect(result.spendingLevel, 'Cao');
+      expect(result.analysisSummary, isNot(contains('Thinking tokens here')));
+      expect(result.analysisSummary, contains('Chi tiêu tăng đáng kể 30%'));
+      expect(result.goals, contains('Cắt giảm chi tiêu không thiết yếu'));
+    });
+
+    test('analyzeSpending handles MAX_TOKENS truncation response with clear Vietnamese error and retry notice', () async {
+      final http.Client mockClient = MockClient((http.Request request) async {
+        const String responseBody = '''
+{
+  "candidates": [
+    {
+      "finishReason": "MAX_TOKENS",
+      "content": {
+        "parts": [
+          {
+            "text": "1. Nhận xét biến động chi tiêu:\\nTổng chi..."
+          }
+        ]
+      }
+    }
+  ]
+}
+''';
+        return http.Response(responseBody, 200, headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        });
+      });
+
+      final GeminiService service = GeminiService(
+        apiKey: 'valid_fake_key',
+        connectivity: _MockConnectivity(const <ConnectivityResult>[ConnectivityResult.wifi]),
+        client: mockClient,
+      );
+
+      expect(
+        () => service.analyzeSpending(sampleAgg),
+        throwsA(predicate((Object? e) =>
+            e is GeminiException &&
+            e.message.contains('MAX_TOKENS') &&
+            e.message.contains('Thử lại'))),
+      );
+    });
+
+    test('analyzeSpending handles empty response with helpful Vietnamese exception', () async {
+      final http.Client mockClient = MockClient((http.Request request) async {
+        const String responseBody = '''
+{
+  "candidates": [
+    {
+      "finishReason": "STOP",
+      "content": {
+        "parts": []
+      }
+    }
+  ]
+}
+''';
+        return http.Response(responseBody, 200, headers: <String, String>{
+          'content-type': 'application/json; charset=utf-8',
+        });
+      });
+
+      final GeminiService service = GeminiService(
+        apiKey: 'valid_fake_key',
+        connectivity: _MockConnectivity(const <ConnectivityResult>[ConnectivityResult.wifi]),
+        client: mockClient,
+      );
+
+      expect(
+        () => service.analyzeSpending(sampleAgg),
+        throwsA(predicate((Object? e) =>
+            e is GeminiException &&
+            e.message.contains('trống rỗng'))),
+      );
     });
 
     test('analyzeSpending maps HTTP 404 Model Not Found to specific Vietnamese exception', () async {

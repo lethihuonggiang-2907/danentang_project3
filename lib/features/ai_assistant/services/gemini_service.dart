@@ -28,19 +28,34 @@ class GeminiService {
   /// Pure function: Builds Vietnamese structured instruction prompt using aggregated data only.
   /// Guaranteed to never contain images, merchant names, or notes.
   static String buildSpendingPrompt(SpendingAggregation agg) {
-    final String jsonData = const JsonEncoder.withIndent('  ').convert(agg.toJson());
+    final String jsonData =
+        const JsonEncoder.withIndent('  ').convert(agg.toJson());
+    final bool isDataLimited =
+        agg.transactionCount < 3 || agg.previousWeekTotal == 0;
+    final String dataNote = isDataLimited
+        ? '\nLƯU Ý: Dữ liệu tuần này còn ít (dưới 3 giao dịch hoặc chưa có dữ liệu tuần trước để đối chiếu), hãy đưa ra nhận xét ngắn gọn mang tính tham khảo và khích lệ người dùng tiếp tục ghi chép chi tiêu.\n'
+        : '';
 
     return '''
-Bạn là chuyên gia tư vấn tài chính cá nhân. Dưới đây là số liệu chi tiêu tổng hợp của người dùng trong tuần:
+Bạn là chuyên gia tư vấn quản lý tài chính cá nhân. Dưới đây là số liệu chi tiêu tổng hợp của người dùng trong tuần:
 
-$jsonData
+$jsonData$dataNote
+Hãy phân tích số liệu trên và trả lời hoàn toàn bằng tiếng Việt theo đúng cấu trúc 3 phần sau (không dùng tiếng Anh, không lặp lại lời nhắc hướng dẫn):
 
-Hãy phân tích số liệu trên và trả lời bằng tiếng Việt theo định dạng có cấu trúc rõ ràng:
-1. MỨC ĐỘ CHI TIÊU: Chọn duy nhất 1 trong 3 mức: [Thấp] hoặc [Vừa phải] hoặc [Cao].
-2. NHẬN XÉT: Phân tích ngắn gọn (khoảng 3-4 câu) về biến động chi tiêu, danh mục tốn kém nhất và thay đổi so với tuần trước.
-3. MỤC TIÊU TUẦN TỚI: Đưa ra 2-3 mục tiêu tài chính cụ thể, thực tế dưới dạng gạch đầu dòng (- ).
+1. Nhận xét biến động chi tiêu:
+(Nhận xét súc tích về tổng chi tiêu, danh mục tốn kém nhất và thay đổi so với tuần trước)
 
-Yêu cầu: Trả lời súc tích, mang tính khích lệ, không lan man.
+2. Mức độ chi tiêu: Thấp / Vừa phải / Cao
+(Ghi rõ một trong ba từ: Thấp, Vừa phải, hoặc Cao)
+
+3. Mục tiêu tuần tới:
+- [Mục tiêu 1]
+- [Mục tiêu 2]
+- [Mục tiêu 3]
+
+Yêu cầu bắt buộc:
+- Toàn bộ câu trả lời bằng tiếng Việt, tuyệt đối không dùng bất kỳ tiêu đề hoặc chú thích tiếng Anh nào.
+- Trả lời ngắn gọn, súc tích (dưới 150 từ), thiết thực và mang tính khích lệ.
 ''';
   }
 
@@ -62,32 +77,78 @@ Yêu cầu: Trả lời súc tích, mang tính khích lệ, không lan man.
       throw GeminiException('Gemini không trả về kết quả nào.');
     }
 
-    final Map<String, dynamic> candidate =
+    // Inspect finishReason on the primary candidate
+    final Map<String, dynamic> firstCandidate =
         candidates.first as Map<String, dynamic>;
-    final Map<String, dynamic>? content =
-        candidate['content'] as Map<String, dynamic>?;
-    final List<dynamic>? parts = content?['parts'] as List<dynamic>?;
+    final String? finishReason = firstCandidate['finishReason'] as String?;
+    if (finishReason == 'MAX_TOKENS') {
+      throw GeminiException(
+        'Câu trả lời bị ngắt quãng do vượt quá hạn mức token (MAX_TOKENS). Vui lòng nhấn Thử lại.',
+      );
+    }
+    if (finishReason == 'SAFETY') {
+      throw GeminiException(
+        'Nội dung phân tích bị chặn bởi bộ lọc an toàn của AI (SAFETY). Vui lòng nhấn Thử lại.',
+      );
+    }
 
-    if (parts == null || parts.isEmpty) {
+    // Concatenate text from ALL parts of ALL candidates (skipping thought summaries)
+    final StringBuffer textBuffer = StringBuffer();
+
+    for (final dynamic cand in candidates) {
+      if (cand is! Map<String, dynamic>) continue;
+      final Map<String, dynamic>? content =
+          cand['content'] as Map<String, dynamic>?;
+      final List<dynamic>? parts = content?['parts'] as List<dynamic>?;
+      if (parts == null) continue;
+
+      for (final dynamic part in parts) {
+        if (part is! Map<String, dynamic>) continue;
+
+        // Skip thought parts if present
+        final bool isThought = part['thought'] == true ||
+            part['isThought'] == true;
+        if (isThought) continue;
+
+        final String? partText = part['text'] as String?;
+        if (partText != null && partText.isNotEmpty) {
+          textBuffer.write(partText);
+        }
+      }
+    }
+
+    final String text = textBuffer.toString().trim();
+    if (text.isEmpty) {
       throw GeminiException('Nội dung phản hồi từ AI trống rỗng.');
     }
 
-    final String text = (parts.first as Map<String, dynamic>)['text'] as String? ?? '';
-    if (text.trim().isEmpty) {
-      throw GeminiException('Nội dung phản hồi từ AI trống rỗng.');
-    }
-
-    // Heuristic extraction of Spending Level, Summary, and Goals from structured text
+    // Extract Spending Level: 'Thấp' | 'Vừa phải' | 'Cao'
     String level = 'Vừa phải';
-    if (RegExp(r'\b(Thấp)\b', caseSensitive: false).hasMatch(text)) {
-      level = 'Thấp';
-    } else if (RegExp(r'\b(Cao)\b', caseSensitive: false).hasMatch(text)) {
-      level = 'Cao';
+    final RegExp levelRegex = RegExp(
+      r'Mức độ chi tiêu[:\s*]+.*?\b(Thấp|Vừa phải|Cao)\b',
+      caseSensitive: false,
+    );
+    final RegExpMatch? levelMatch = levelRegex.firstMatch(text);
+    if (levelMatch != null) {
+      final String raw = levelMatch.group(1)!.toLowerCase();
+      if (raw == 'thấp') {
+        level = 'Thấp';
+      } else if (raw == 'cao') {
+        level = 'Cao';
+      } else {
+        level = 'Vừa phải';
+      }
+    } else {
+      if (RegExp(r'\b(Thấp)\b', caseSensitive: false).hasMatch(text)) {
+        level = 'Thấp';
+      } else if (RegExp(r'\b(Cao)\b', caseSensitive: false).hasMatch(text)) {
+        level = 'Cao';
+      }
     }
 
     // Extract bullet points for goals
     final List<String> goals = <String>[];
-    final RegExp bulletRegex = RegExp(r'^[\-\*\•]\s+(.+)$', multiLine: true);
+    final RegExp bulletRegex = RegExp(r'^\s*[\-\*\•]\s+(.+)$', multiLine: true);
     for (final RegExpMatch m in bulletRegex.allMatches(text)) {
       final String g = m.group(1)?.trim() ?? '';
       if (g.isNotEmpty && !goals.contains(g)) {
@@ -139,7 +200,10 @@ Yêu cầu: Trả lời súc tích, mang tính khích lệ, không lan man.
       ],
       'generationConfig': <String, dynamic>{
         'temperature': 0.4,
-        'maxOutputTokens': 800,
+        'maxOutputTokens': 4096,
+        'thinkingConfig': <String, dynamic>{
+          'thinkingBudget': 1024,
+        },
       },
     };
 

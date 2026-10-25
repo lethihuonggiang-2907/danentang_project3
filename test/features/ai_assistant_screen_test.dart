@@ -25,6 +25,7 @@ void main() {
 
     expect(find.text('Trợ lý AI Gemini'), findsOneWidget);
     expect(find.text('Dữ liệu tổng hợp tuần này:'), findsOneWidget);
+    expect(find.text('Dữ liệu còn ít nên nhận xét chỉ mang tính tham khảo'), findsOneWidget);
     expect(find.text('Phân tích chi tiêu với AI'), findsOneWidget);
 
     // Tap analyze
@@ -79,7 +80,8 @@ class _MockSuccessGeminiService extends GeminiService {
   Future<GeminiAnalysisResult> analyzeSpending(SpendingAggregation aggregation) async {
     return const GeminiAnalysisResult(
       spendingLevel: 'Vừa phải',
-      analysisSummary: 'Chi tiêu tuần này ổn định so với tuần trước.',
+      analysisSummary:
+          '1. Nhận xét biến động chi tiêu:\nChi tiêu tuần này ổn định so với tuần trước.\n\n2. Mức độ chi tiêu: Vừa phải\n\n3. Mục tiêu tuần tới:\n- Tiết kiệm 10% thu nhập\n- Giảm ăn ngoài',
       goals: <String>['Tiết kiệm 10% thu nhập', 'Giảm ăn ngoài'],
       rawResponse: 'Raw text',
     );
